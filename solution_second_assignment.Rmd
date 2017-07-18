@@ -1,0 +1,12 @@
+---
+title: "Solution_2ndAssignment_Reprod.Research"
+author: "Hauer-Glocke"
+date: "18 Juli 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
