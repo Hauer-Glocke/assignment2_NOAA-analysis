@@ -1,12 +1,106 @@
 ---
-title: "Solution_2ndAssignment_Reprod.Research"
+title: "2nd Assignment of 'Reproducible Research'" 
+subtitle: "Impact of Storm Events on Health and Economy"
 author: "Hauer-Glocke"
 date: "18 Juli 2017"
 output: html_document
+fig_caption: TRUE
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(cache=TRUE)
+
 ```
 
+#Synopsis - Overview Data Analysis
+
+> Overview in less then 10 sentences
+
+#Data Processing
+
+> describes how the data were loaded into R and processed for analysis
+
+```{r, echo = TRUE, message = FALSE}
+#Loading of Data from URL
+library(readr)
+temp <- tempfile()
+download.file("https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2",temp)
+con <- bzfile(temp)
+df <- read_csv(con)
+unlink(temp)
+rm(con, temp)
+```
+
+```{r, echo = TRUE, message = FALSE}
+#Identification of relevant Variables
+library(dplyr)
+df1 <- df %>%
+        #Selection of relevant variables (Date, Event, Healt Impact and Economic Impact)
+        select(BGN_DATE ,EVTYPE,FATALITIES,INJURIES,PROPDMG, CROPDMG, PROPDMGEXP, CROPDMGEXP) %>%
+        mutate(cases_harm = FATALITIES + INJURIES) %>%
+        mutate(economic_damage = PROPDMG + CROPDMG)
+```
+
+
+#Results
+
+> main results are presented?
+
+##1. Across the United States, which types of events (as indicated in the EVTYPE variable) are most harmful with respect to population health?
+
+The Harm on the Population is measured via the Number of Fatality and Injury cases, as indicated "FATALITIES" and "INJURIES". Further I use the sum to indicate the "Harm to Population Health".
+
+
+```{r, echo = TRUE, message = FALSE}
+#Build Dataset for harmed Population
+library(lubridate)
+
+df1$BGN_DATE <- as.Date(df1$BGN_DATE, "%d/%m/%Y %H:%M:%S")
+df_harm1 <- df1 %>%
+        filter(!(is.na(BGN_DATE))) %>%
+        group_by(BGN_DATE) %>%
+        summarise(harm_by_date = sum(cases_harm))
+```
+
+```{r fig1, echo = TRUE, fig.cap= "This graph shows a timeline of harmful events in the US. The harmful cases are aggregated on the day."}
+plot(df_harm1, 
+     type = "l",
+     main = "Harmful events to the population",
+     xlab = "Timeline of events",
+     ylab = "Number of harmed people (injured or fatal)")
+
+```
+
+```{r, echo = TRUE, message = FALSE}
+#What events harm the population most?
+df_harm2 <- df1 %>%
+        group_by(EVTYPE) %>%
+        summarise(total_harm = sum(cases_harm)) %>%
+        arrange(desc(total_harm))
+head(df_harm2, 5)
+
+```
+
+##2. Across the United States, which types of events have the greatest economic consequences?
+
+Economic Consequences are defined as Properitory and Crop Damages, this is indicated with the variables "PROPDMG" and "CROPDMG". Further I use the sum to indicate the "Economic Consequences".
+
+```{r, echo = TRUE, message = FALSE}
+#Developement of Economic Consequences over all Event Types
+df_dmg <- df1 %>%
+        group_by(EVTYPE) %>%
+        summarise(economic_damage_total = sum(economic_damage)) %>%
+        arrange(desc(economic_damage_total))
+
+#Event Types with greatest Economic Consequences
+head(df_dmg, 5)
+
+```
+
+```{r fig2, echo = TRUE, fig.cap = "Here I can add a long which describes the above viewed figure. I guess even when the text is long, it should not occur a problem here?"}
+
+
+
+
+```
 
