@@ -2,7 +2,7 @@
 title: "2nd Assignment of 'Reproducible Research'" 
 subtitle: "Impact of Storm Events on Health and Economy"
 author: "Hauer-Glocke"
-date: "18 Juli 2017"
+date: "21 Juli 2017"
 output: html_document
 fig_caption: TRUE
 ---
@@ -14,37 +14,115 @@ knitr::opts_chunk$set(cache=TRUE)
 
 #Synopsis - Overview Data Analysis
 
-> Overview in less then 10 sentences
+My analysis consists of two parts:
+
+1. The Loading and Preparation of the Data (Data Processing)
+2. Data Analysis and Answering of Research Questions
+* Harmful events with respect to the people's health
+* Economic consequences of weather events
+        
+The analysis comes to the result that Tornados have the by far biggest influence on people's health. Excessive heat, Thunderstorm Winds and Floods are also significantly harming event types. With respect to economic consequences, it can be observed that biggest property damages are reportedly caused by tornados, wild fires and hails, while crop damages are caused by Wetness and Wind related events.
 
 #Data Processing
 
-> describes how the data were loaded into R and processed for analysis
+* The Loading and Preparation of the Data (Data Processing)
+1. Loading of Data
+2. Adjustments and Selection of Variables
+3. Analysis of Data Skewness
 
+The data is loaded directly from the server. In order to make the data workable, I adjusted variable names and excluded summary events, which decreases the number of different events significantly. Furthermore, I created the damage variables out of the for relating variables from the dataset, where the description indicated an exponential variable and the value of damage. The density graph indicates a problem with skewness in the data. Which is not further adressed here.
+
+##Relevant Packages
+```{r, echo = TRUE, message = FALSE}
+#Overview loaded packages
+library(readr) #Reading data fast
+library(dplyr) #Data Manipulation
+library(lubridate) #Date Manipulation
+library(ggplot2) #Additional Graphical Options
+```
+
+##Loading Data from URL
 ```{r, echo = TRUE, message = FALSE}
 #Loading of Data from URL
-library(readr)
 temp <- tempfile()
 download.file("https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2",temp)
 con <- bzfile(temp)
 df <- read_csv(con)
 unlink(temp)
-rm(con, temp)
+rm(con, temp) #Drop irrelevant variables
 ```
+
+##Adjust and Select the relevant Variables
+```{r, echo = TRUE, message = FALSE}
+#Identification of relevant Variables
+df1 <- df %>%
+        #Selection of relevant variables (Date, Event, Healt Impact and Economic Impact)
+        select(REFNUM, BGN_DATE, EVTYPE, FATALITIES, INJURIES, PROPDMG, CROPDMG, PROPDMGEXP, CROPDMGEXP) %>%
+        mutate(cases_harm = FATALITIES + INJURIES)
+
+
+#Adjust Variable and Event Names to "lowercase"
+names(df1) <- tolower(names(df1))
+df1$evtype <- tolower(df1$evtype)
+
+#Delete summary event types
+df1 <- df1 %>%
+        filter(!(evtype %in% grep('summary', evtype, value=TRUE, ignore.case=TRUE)))
+
+#Rewrite tstm to thunderstorm
+df1$evtype <- gsub("tstm", "thunderstorm", df1$evtype)
+
+#Create the Damage Variables (Property and Crop Damage)
+##Build Exponent Vectors (K - Thousand (3), M - Million (6), B - Billion (9), H / h - Hundred (2),
+##+ / - / ? - NA (unkown))
+
+crop_exp <- as.vector(df1$cropdmgexp)
+prop_exp <- as.vector(df1$propdmgexp)
+
+sub <- as.data.frame(cbind(c("h", "H", "k", "K", "m", "M", "b", "B", "+", "-", "?", NA),
+                           c(2, 2, 3, 3, 6, 6, 9, 9,NA,NA,NA,0)))
+sub$V1 <- as.character(sub$V1)
+sub$V2 <- as.character(sub$V2)
+        
+for(i in 1:length(sub$V1)){
+        crop_exp[crop_exp==sub$V1[i]] <- sub$V2[i]
+        prop_exp[prop_exp==sub$V1[i]] <- sub$V2[i]
+}        
+
+##Create crop_dmg and prop_dmg
+crop_dmg <- df1$cropdmg * 10**as.numeric(crop_exp)
+prop_dmg <- df1$propdmg * 10**as.numeric(prop_exp)
+
+##Combine in one dataset
+df1 <- cbind(df1, crop_dmg, prop_dmg)
+df1 <- df1 %>%
+        select(refnum, bgn_date, evtype, cases_harm, fatalities, injuries, crop_dmg, prop_dmg)
+
+#Adjust class of relevant variables
+df1$bgn_date <- mdy_hms(df1$bgn_date, tz=Sys.timezone())
+```
+
+##Analysis of event Skewness
+According to the description of the dataset, there are fewer data points gathered in earlier days. This might skew the distribution of relevant results. In this subchapter I address this issue, analyse it and propose a solution.
 
 ```{r, echo = TRUE, message = FALSE}
 #Identification of relevant Variables
-library(dplyr)
-df1 <- df %>%
-        #Selection of relevant variables (Date, Event, Healt Impact and Economic Impact)
-        select(BGN_DATE ,EVTYPE,FATALITIES,INJURIES,PROPDMG, CROPDMG, PROPDMGEXP, CROPDMGEXP) %>%
-        mutate(cases_harm = FATALITIES + INJURIES) %>%
-        mutate(economic_damage = PROPDMG + CROPDMG)
+plot_skew <- as.data.frame(table(df1$`bgn_date`))
 ```
+This plot supports the expectation that the data is skewed towards newer events.
 
+```{r fig1, echo = TRUE, fig.cap= "This graph shows the density distribution over the storm dataset. The decreasing density in respect to number of cases goes hand in hand with the expectation, that nowadays much more data can be gathered and therefore skew the data towards newer events."}
+plot(plot_skew, 
+     main = "Density of observed Storm Data",
+     xlab = "Timeline of events",
+     ylab = "Number of registered data points")
+
+```
 
 #Results
 
-> main results are presented?
+* Tornados and Excessive Heats are most harmful to American Citizens. Thunderstorm winds and floods are also very relevant for injuries.
+* Biggest property damages are reportedly caused by tornados, wild fires and hails, while crop damages are caused by Wetness and Wind related events.
 
 ##1. Across the United States, which types of events (as indicated in the EVTYPE variable) are most harmful with respect to population health?
 
@@ -53,16 +131,12 @@ The Harm on the Population is measured via the Number of Fatality and Injury cas
 
 ```{r, echo = TRUE, message = FALSE}
 #Build Dataset for harmed Population
-library(lubridate)
-
-df1$BGN_DATE <- as.Date(df1$BGN_DATE, "%d/%m/%Y %H:%M:%S")
 df_harm1 <- df1 %>%
-        filter(!(is.na(BGN_DATE))) %>%
-        group_by(BGN_DATE) %>%
+        group_by(bgn_date) %>%
         summarise(harm_by_date = sum(cases_harm))
 ```
 
-```{r fig1, echo = TRUE, fig.cap= "This graph shows a timeline of harmful events in the US. The harmful cases are aggregated on the day."}
+```{r fig2, echo = TRUE, fig.cap= "This graph shows a timeline of harmful events in the US. The harmful cases are aggregated on the day."}
 plot(df_harm1, 
      type = "l",
      main = "Harmful events to the population",
@@ -74,33 +148,63 @@ plot(df_harm1,
 ```{r, echo = TRUE, message = FALSE}
 #What events harm the population most?
 df_harm2 <- df1 %>%
-        group_by(EVTYPE) %>%
+        group_by(evtype) %>%
         summarise(total_harm = sum(cases_harm)) %>%
         arrange(desc(total_harm))
-head(df_harm2, 5)
+head(df_harm2, 3)
 
+#What events cause most Deaths
+df_deaths <- df1 %>%
+        group_by(evtype) %>%
+        summarise(total_deaths = sum(fatalities)) %>%
+        arrange(desc(total_deaths))
+head(df_deaths, 3)
+
+#What events cause most Injuries
+df_injuries <- df1 %>%
+        group_by(evtype) %>%
+        summarise(total_injuries = sum(injuries)) %>%
+        arrange(desc(total_injuries))
+head(df_injuries, 3)
 ```
 
 ##2. Across the United States, which types of events have the greatest economic consequences?
+```{r, echo = TRUE, message = FALSE}
+#Events with observed damage
+df1_dmg <- df1 %>%
+        filter(!(is.na(crop_dmg) & is.na(prop_dmg)))
+```
 
-Economic Consequences are defined as Properitory and Crop Damages, this is indicated with the variables "PROPDMG" and "CROPDMG". Further I use the sum to indicate the "Economic Consequences".
+```{r fig3, echo = TRUE, fig.cap= "This graph shows a timeline of harmful events in the US. The harmful cases are aggregated on the day."}
+g <- ggplot(data=df1_dmg) + 
+        geom_point(aes(x=df1_dmg$bgn_date, y=df1_dmg$crop_dmg), color="red") +
+        geom_point(aes(x=df1_dmg$bgn_date, y=df1_dmg$prop_dmg), color="blue") +
+        geom_line(aes(x=df1_dmg$bgn_date, y=df1_dmg$prop_dmg+df1_dmg$crop_dmg), color="green") +
+        labs(x = "Timeline of events",
+             y = "Economic Damage in USDollar",
+             title = "Overview damage of property and crops")
+g
+
+```
+
 
 ```{r, echo = TRUE, message = FALSE}
 #Developement of Economic Consequences over all Event Types
-df_dmg <- df1 %>%
-        group_by(EVTYPE) %>%
-        summarise(economic_damage_total = sum(economic_damage)) %>%
-        arrange(desc(economic_damage_total))
+df_crop_dmg <- df1 %>%
+        group_by(evtype) %>%
+        summarise(crop_damage_total = sum(crop_dmg)) %>%
+        arrange(desc(crop_damage_total))
 
 #Event Types with greatest Economic Consequences
-head(df_dmg, 5)
+head(df_crop_dmg, 5)
+
+#Developement of Economic Consequences over all Event Types
+df_prop_dmg <- df1 %>%
+        group_by(evtype) %>%
+        summarise(prop_damage_total = sum(prop_dmg)) %>%
+        arrange(desc(prop_damage_total))
+
+#Event Types with greatest Economic Consequences
+head(df_prop_dmg, 5)
 
 ```
-
-```{r fig2, echo = TRUE, fig.cap = "Here I can add a long which describes the above viewed figure. I guess even when the text is long, it should not occur a problem here?"}
-
-
-
-
-```
-
